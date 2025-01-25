@@ -4,7 +4,6 @@ require 'json'
 require 'pry'
 require 'date'
 require 'minitest/autorun'
-require 'ruby-progressbar'
 
 class User
   attr_reader :attributes, :sessions
@@ -44,19 +43,20 @@ def collect_stats_from_users(report, users_objects, &block)
   end
 end
 
-def work
-  file_lines = File.read('data.txt').split("\n")
+def work(file_name: "data.txt", disable_gc: false)
+  GC.disable if disable_gc
+  file_lines = File.read(file_name).split("\n")
 
   users = []
   sessions = []
 
-  file_progressbar = ProgressBar.create(title: "Reading File", total: file_lines.count, format: '%t: |%B| %p%% %e')
-
   file_lines.each do |line|
-    cols = line.split(',')
-    users = users + [parse_user(line)] if cols[0] == 'user'
-    sessions = sessions + [parse_session(line)] if cols[0] == 'session'
-    file_progressbar.increment
+    case
+    when line.start_with?('user,')
+      users << parse_user(line)
+    when line.start_with?('session,')
+      sessions << parse_session(line)
+    end
   end
 
   # Отчёт в json
@@ -79,13 +79,9 @@ def work
   report[:totalUsers] = users.count
 
   # Подсчёт количества уникальных браузеров
-  uniqueBrowsers = []
-  sessions.each do |session|
-    browser = session['browser']
-    uniqueBrowsers += [browser] if uniqueBrowsers.all? { |b| b != browser }
-  end
+  unique_browsers = sessions.map { |session| session['browser'] }.uniq
 
-  report['uniqueBrowsersCount'] = uniqueBrowsers.count
+  report['uniqueBrowsersCount'] = unique_browsers.count
 
   report['totalSessions'] = sessions.count
 
@@ -98,16 +94,18 @@ def work
       .join(',')
 
   # Статистика по пользователям
-  users_objects = []
+  sessions_by_user = {}
+  sessions.each do |session|
+    user_id = session['user_id']
+    sessions_by_user[user_id] ||= []
+    sessions_by_user[user_id] << session
+  end
 
-  user_progressbar = ProgressBar.create(title: "Processing Users", total: users.count, format: '%t: |%B| %p%% %e')
-
-  users.each do |user|
-    attributes = user
-    user_sessions = sessions.select { |session| session['user_id'] == user['id'] }
-    user_object = User.new(attributes: attributes, sessions: user_sessions)
-    users_objects = users_objects + [user_object]
-    user_progressbar.increment
+  users_objects = users.map do |user|
+    user_id = user['id']
+    user_sessions = sessions_by_user[user_id] || []
+    user_object = User.new(attributes: user, sessions: user_sessions)
+    user_object
   end
 
   report['usersStats'] = {}
