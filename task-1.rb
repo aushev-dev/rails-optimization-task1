@@ -4,6 +4,7 @@ require 'json'
 require 'pry'
 require 'date'
 require 'minitest/autorun'
+require 'ruby-progressbar'
 
 class User
   attr_reader :attributes, :sessions
@@ -49,10 +50,13 @@ def work
   users = []
   sessions = []
 
+  file_progressbar = ProgressBar.create(title: "Reading File", total: file_lines.count, format: '%t: |%B| %p%% %e')
+
   file_lines.each do |line|
     cols = line.split(',')
     users = users + [parse_user(line)] if cols[0] == 'user'
     sessions = sessions + [parse_session(line)] if cols[0] == 'session'
+    file_progressbar.increment
   end
 
   # Отчёт в json
@@ -96,11 +100,14 @@ def work
   # Статистика по пользователям
   users_objects = []
 
+  user_progressbar = ProgressBar.create(title: "Processing Users", total: users.count, format: '%t: |%B| %p%% %e')
+
   users.each do |user|
     attributes = user
     user_sessions = sessions.select { |session| session['user_id'] == user['id'] }
     user_object = User.new(attributes: attributes, sessions: user_sessions)
     users_objects = users_objects + [user_object]
+    user_progressbar.increment
   end
 
   report['usersStats'] = {}
