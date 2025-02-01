@@ -4,6 +4,7 @@ require 'json'
 require 'pry'
 require 'date'
 require 'minitest/autorun'
+require 'ruby-progressbar'
 
 class User
   attr_reader :attributes, :sessions
@@ -43,12 +44,14 @@ def collect_stats_from_users(report, users_objects, &block)
   end
 end
 
-def work(file_name: "data.txt", disable_gc: false)
+def work(file_name: "data.txt", disable_gc: false, progress_bar: true)
   GC.disable if disable_gc
   file_lines = File.read(file_name).split("\n")
 
   users = []
   sessions = []
+
+  file_progressbar = progress_bar ? ProgressBar.create(title: "Reading File", total: file_lines.count, format: '%t: |%B| %p%% %e') : nil
 
   file_lines.each do |line|
     case
@@ -57,6 +60,7 @@ def work(file_name: "data.txt", disable_gc: false)
     when line.start_with?('session,')
       sessions << parse_session(line)
     end
+    increment_progressbar(file_progressbar)
   end
 
   # Отчёт в json
@@ -101,10 +105,13 @@ def work(file_name: "data.txt", disable_gc: false)
     sessions_by_user[user_id] << session
   end
 
+  user_progressbar = progress_bar ? ProgressBar.create(title: "Processing Users", total: users.count, format: '%t: |%B| %p%% %e') : nil
+
   users_objects = users.map do |user|
     user_id = user['id']
     user_sessions = sessions_by_user[user_id] || []
     user_object = User.new(attributes: user, sessions: user_sessions)
+    increment_progressbar(user_progressbar)
     user_object
   end
 
@@ -146,6 +153,10 @@ def work(file_name: "data.txt", disable_gc: false)
   end
 
   File.write('result.json', "#{report.to_json}\n")
+end
+
+def increment_progressbar(progressbar)
+  progressbar&.increment
 end
 
 class TestMe < Minitest::Test
